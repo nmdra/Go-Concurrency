@@ -182,7 +182,7 @@ func fetchImageList(limit int) ([]ImageMeta, error) {
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	numWorkers := runtime.NumCPU() * 2
-	const jobTimeout = 2 * time.Second
+	const jobTimeout = 4 * time.Second
 
 	logger.Info("Starting image downloader", "workers", numWorkers)
 
@@ -196,6 +196,7 @@ func main() {
 	results := make(chan Result, len(images))
 	var wg sync.WaitGroup
 
+	// Fan-Out
 	for w := 1; w <= numWorkers; w++ {
 		wg.Add(1)
 		go imageProcessor(w, jobs, results, &wg, jobTimeout)
@@ -206,11 +207,14 @@ func main() {
 	}
 	close(jobs)
 
+	// Fan-In
 	go func() {
 		wg.Wait()
 		close(results)
 	}()
 
+	// closing a channel only means "no more values will be sent to it."
+	// Reading from a closed channel is still safe.
 	for result := range results {
 		if result.Error != nil {
 			logger.Warn("Image processing failed",
